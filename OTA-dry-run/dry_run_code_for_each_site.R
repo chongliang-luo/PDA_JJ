@@ -8,7 +8,7 @@ devtools::install_github("penncil/pda")
 require(pda)
 
 # !!! specify your working directory, and your site ID
-setwd('/Users/chongliang/Dropbox/R/DistCox/simu/JJ_pda/OTA-dry-run/')
+setwd('/Users/chongliang/Dropbox/PDA_development/PDA_JJ/OTA-dry-run/')
 mysite = 'site1' # 'site2'
 
 
@@ -54,12 +54,14 @@ pda(site_id = 'site1', control = control, dir = mydir)
 
 
 # STEP 1: initialize
+# download control.json from OTA to your working dir
 pda(site_id = mysite, ipdata = mydata, dir=mydir)
 # upload siteX_initialize.json to OTA
 # (only lead site) also upload updated control.json to OTA
 
 
 # STEP 2: derive
+# download control.json from OTA to your working dir
 pda(site_id = mysite, ipdata = mydata, dir=mydir)
 # upload siteX_derive.json to OTA
 # (only lead site) also upload updated control.json to OTA
