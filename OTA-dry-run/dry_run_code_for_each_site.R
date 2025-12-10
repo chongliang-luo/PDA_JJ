@@ -23,7 +23,7 @@ sites = paste0('site', 1:10) # unique site names
 ######################################################################
 
 # !!! specify your working directory, .json files will be written to this dir
-mydir <- 'site1_lead'   # 'site2'
+mydir <- 'site1_lead/ODACH'   # 'site2/ODACH'
 if (!dir.exists(mydir)) {
   dir.create(mydir)
 } 
@@ -94,7 +94,10 @@ data.frame(var=control$variables,
 ######################################################################
 
 # !!! specify your working directory, .json files will be written to this dir
-mydir <- 'pda/ODACT'    
+mydir <- 'site1_lead/ODACT'  # 'site2/ODACT'  
+if (!dir.exists(mydir)) {
+  dir.create(mydir)
+} 
 file.remove(list.files(mydir,full.names = T)[grepl('.json', list.files(mydir))]) # clear any existing files
 
  
@@ -126,12 +129,14 @@ pda(site_id = 'site1', control = control, dir = mydir)
 
 
 # STEP 1: initialize
+# download control.json from OTA to your working dir
 pda(site_id = mysite, ipdata = mydata, dir=mydir)
 # upload siteX_initialize.json to OTA
 # (only lead site) also upload updated control.json to OTA
 
 
 # STEP 2: derive
+# download control.json from OTA to your working dir
 pda(site_id = mysite, ipdata = mydata, dir=mydir)
 # upload siteX_derive.json to OTA
 # (only lead site) also upload updated control.json to OTA
