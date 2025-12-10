@@ -1,0 +1,207 @@
+---
+title: "J&J PDA demo"
+author: "Chongliang Luo, PhD (chongliang@wustl.edu)"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+The Privacy-preserving Distributed Algorithm (PDA, https://pdamethods.org/) framework is designed for conducting federated learning in a distributed clinical research network. See a video introducing the PDA framework [https://pdamethods.org/]. The development of the PDA framework has resulted in numerous publications (30+ method papers and 20+ clinical papers), real-world studies (20+ national and 10+ international studies); and more than 50 data partners. Compare to other alternative distributed/federated learning methods, it has 4 core advantages: it is
+
+1.	privacy-preserving, as it transfers only aggregated data across sites;
+2.	accurate, as it achieves results very close to the pooled analysis;
+3.	communication-efficient, as it only requires a few (non-iteractive) rounds of data transferring; and
+4.	heterogeneity-aware, as it allows the estimated model parameters to vary across sites.
+
+The methods in the PDA framework has been implemented via the R package "pda", both available on CRAN (https://CRAN.R-project.org/package=pda) and GitHub (https://github.com/Penncil/pda). The R package has been downloaded 13300+ times since 2022. We also developed an over-the-air platform (PDA-OTA, https://pda-ota.pdamethods.org/) to facilitate a secure and seamless collaboration between data sites. This platform allows users to setup personal profile, initialize a new project/join an existing project, work with colleagues within their own site or from other sites to contribute aggregate data (AD), monitor project progress, and share final report. 
+
+This document will demonstrate how to use the PDA software to run federated learning with multi-site data. Here we only run the code on a local computer, demo using the PDA-OTA platform will be provided in another document. Three (3) models will be tested here
+
+- One-shot Distributed Algorithm for Cox model with Heterogeneity (ODACH, https://pubmed.ncbi.nlm.nih.gov/35459767/),
+- One-shot Distributed Algorithms for Cox model with Time-varying coefficients (ODACT, https://pubmed.ncbi.nlm.nih.gov/39864407/), and
+- Lossless Aggregation for Target Trial Emulation (LATTE, to be added).
+
+Please refer to the publications for detailed method development. The previously simulated multi-site clinical trial data will be used for this demo. The most recent version of the "pda" package on GitHub (v-1.3.1) will be used.
+
+# Setup
+ 
+```{r prepare, echo=T, message=F} 
+# load required packages
+require(data.table)
+require(survival)
+require(devtools)
+# use the most recent GitHub version (1.3.1 as of 12/08/2025)
+# devtools::install_github("penncil/pda") 
+require(pda)
+
+setwd('/Users/chongliang/Dropbox/R/DistCox/simu/JJ_pda')
+
+# read in previously simulated data
+mydata = fread('JJ_pda_simu_data_20251123.csv', drop = 1)
+mydata[,table(site)]
+sites = unique(mydata$site) # unique site names
+K = length(sites)   # number of sites
+# list of data split by sites
+mydata_split <- split(mydata[,-'t_event'], by='site', keep.by=F) 
+``` 
+
+
+
+# ODACH demo
+### ODACH Step 0: setup control file
+The ODACH starts with setting a control file. You should see the "control.json" file in the folder after this step.
+
+```{r odach-0, echo=T, results='hide'} 
+# !!! specify your working directory, .json files will be written to this dir
+mydir <- 'pda/ODACH'    
+file.remove(list.files(mydir,full.names = T)[grepl('.json', list.files(mydir))]) # clear any existing files
+
+# control 
+control <- list(project_name = 'PDA J&J demo, ODACH',
+                # ODACH start with initialize step
+                step = 'initialize', 
+                sites = sites,
+                # assume heterogeneous baseline hazards across sites, i.e. stratified by site
+                heterogeneity = T,   
+                model = 'ODAC',
+                family = 'cox',
+                outcome = "Surv(time, status)", 
+                # Trt is the treatment/control assignment 
+                variables = c('Trt', 'Age', 'Sex', 'RE', 'Mutation'), 
+                optim_maxit = 300,
+                # site1 is assigned as the "lead" site
+                lead_site = 'site1',   
+                # use the meta-estimates as the initial estimates for ODACH
+                init_method = "meta",  
+                upload_date = as.character(Sys.time()) )
+
+# lead site to create and write the control.json file
+pda(site_id = 'site1', control = control, dir = mydir, upload_without_confirm = T, silent_message = T)
+```
+
+### ODACH Step 1: initialize
+At the "initialize" step, each site use their own data to fit a Cox model and transfer the estimated coefficients. You should see files like "site1_initialize.json" in the folder after this step. The control.json file will also be updated after this step with the meta-estimates as the 
+ODACH initial estimates ("beta_init").
+
+```{r odach-1, echo=T}
+# STEP 1: initialize
+for(i in K:1){
+  pda(site_id = sites[i], ipdata = mydata_split[[i]], dir=mydir, upload_without_confirm = T, silent_message = T)
+}
+```  
+
+### ODACH Step 2: derive
+At the "derive" step, each site uses the initial estimates to calculate the aggregate data (i.e. the first- and second- order derivatives of their local likelihood functions). You should see files like "site1_derive.json" in the folder after this step. The control.json file will also be updated after this step ("step" updated to "estimate").
+
+```{r odach-2, echo=T} 
+# STEP 2: derive
+for(i in K:1){
+  pda(site_id = sites[i], ipdata = mydata_split[[i]], dir=mydir, upload_without_confirm = T, silent_message = T)
+}
+``` 
+ 
+### ODACH Step 3: estimate
+At the "estimate" step, the lead site combines its own data and the aggregate data from each site to calculate the ODACH estimates. The other sites are not required to run this step. You should see "site1_estimate.json" file in the folder after this step. The ODACH algorithm has completed.
+
+```{r odach-3, echo=T} 
+# STEP 3: estimate
+pda(site_id = 'site1', ipdata = mydata_split[[1]], dir=mydir, upload_without_confirm = T, silent_message = T)
+
+# the PDA ODACH is now completed!
+
+# present the ODACH results
+config <- getCloudConfig(site_id = 'site1', dir=mydir)
+fit.odach <- pdaGet(name = 'site1_estimate', config = config)
+data.frame(var=control$variables, 
+           b.odach=fit.odach$btilde,   # beta coef's
+           se.odach=fit.odach$setilde) # st errors of the beta's
+```
+
+
+
+
+
+# ODACT demo
+The PDA steps for ODACT are similar as ODACH, with differences that due to assuming time-varying coefficients of the treatment and covariates. We need to specify the time points and the bandwidth of data around them at which we want to estimate the coefficients. Also, the initial estimates and aggregate data will have an additional dimension for time points.
+
+### ODACT Step 0: setup control file
+The ODACT starts with setting a control file.  You should see the "control.json" file in the folder after this step.
+
+```{r odact-0, echo=T, results='hide'} 
+# !!! specify your working directory, .json files will be written to this dir
+mydir <- 'pda/ODACT'    
+file.remove(list.files(mydir,full.names = T)[grepl('.json', list.files(mydir))]) # clear any existing files
+
+# control 
+control <- list(project_name = 'PDA J&J demo, ODACT',
+                # ODACT start with initialize step
+                step = 'initialize', 
+                sites = sites,
+                # assume heterogeneous baseline hazards across sites, i.e. stratified by site
+                heterogeneity = T,   
+                model = 'ODACT',
+                family = 'cox',
+                outcome = "Surv(time, status)", 
+                # Trt is the treatment/control assignment 
+                variables = c('Trt', 'Age', 'Sex', 'RE', 'Mutation'), 
+                # time points to estimate coefficients beta(t) 
+                times = seq(24,by=3,len=4), 
+                # bandwidth of data around the time points
+                bandwidth = 6,
+                optim_maxit = 300,
+                # site1 is assigned as the "lead" site
+                lead_site = 'site1',   
+                # use the meta-estimates as the initial estimates for ODACT
+                init_method = "meta",  
+                upload_date = as.character(Sys.time()) )
+
+# lead site to create and write the control.json file
+pda(site_id = 'site1', control = control, dir = mydir, upload_without_confirm = T, silent_message = T)
+```
+
+### ODACT Step 1: initialize
+At the "initialize" step, each site use their own data to fit a Cox model with time-varying coefficients and transfer the estimated coefficients. You should see files like "site1_initialize.json" in the folder after this step. The control.json file will also be updated after this step with the meta-estimates as the ODACT initial estimates ("beta_init").
+
+```{r odact-1, echo=T}
+# STEP 1: initialize
+for(i in K:1){
+  pda(site_id = sites[i], ipdata = mydata_split[[i]], dir=mydir, upload_without_confirm = T, silent_message = T)
+}
+```  
+
+### ODACT Step 2: derive
+At the "derive" step, each site uses the initial estimates to calculate the aggregate data (i.e. the first- and second- order derivatives of their local likelihood functions). You should see files like "site1_derive.json" in the folder after this step. The control.json file will also be updated after this step ("step" updated to "estimate").
+
+```{r odact-2, echo=T} 
+# STEP 2: derive
+for(i in K:1){
+  pda(site_id = sites[i], ipdata = mydata_split[[i]], dir=mydir, upload_without_confirm = T, silent_message = T)
+}
+``` 
+ 
+### ODACT Step 3: estimate
+At the "estimate" step, the lead site combines its own data and the aggregate data from each site to calculate the ODACT estimates. The other sites are not required to run this step. You should see "site1_estimate.json" file in the folder after this step. The ODACT algorithm has completed.
+
+```{r odact-3, echo=T} 
+# STEP 3: estimate
+pda(site_id = 'site1', ipdata = mydata_split[[1]], dir=mydir, upload_without_confirm = T, silent_message = T)
+
+# the PDA ODACT is now completed!
+
+# present the ODACT results
+config <- getCloudConfig(site_id = 'site1', dir=mydir)
+fit.odact <- pdaGet(name = 'site1_estimate', config = config)
+b.odact = fit.odact$btilde
+se.odact = fit.odact$setilde
+row.names(b.odact) = row.names(se.odact) = control$variables
+colnames(b.odact) = colnames(se.odact) = paste0('time_', control$times)
+b.odact   # beta coef's
+se.odact  # s.e. of the beta's
+```
+
+# Deliverable
+We recommend installing the "pda" package directly from GitHub. In case a local installation is demanded, a zipped package (pda_1.3.1.tar.gz) will also be provided. All the output .json files in this demo (PDA J&J demo output.zip) will also be provided. 

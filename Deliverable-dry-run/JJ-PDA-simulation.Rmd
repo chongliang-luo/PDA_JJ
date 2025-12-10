@@ -1,0 +1,89 @@
+---
+title: "J&J PDA simulation"
+author: "Chongliang Luo, PhD (chongliang@wustl.edu)"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+This document describes the settings of simulating clinical trial data for demonstrating federated learning with the privacy-preserving distributed algorithm (PDA) framework.
+A brief summary of the data to be simulated is:
+
+- Event rate: 0.34 (0.10–0.59)
+- Median survival time: 34.4 months (13.2–47.5)
+- Hazard ratio: 0.77 (0.75–0.80)
+- Sample size: 2500 
+- Number of centers/sites: 10
+- Covariates: Age, Sex, Race/Ethnicity, Mutation subtype
+
+The simulated data will match these numbers. 
+
+
+## Simulation settings
+### Sites and sample sizes
+We simulate patients data from $K=10$ sites, with the number of patients from each site as 
+
+- 400*1 (1 large site), 
+- 300*6 (6 medium site), and
+- 100*3 (3 small sites).
+
+### Treatment assignment 
+As in a randomized controlled trial, we assign the same number of patients to the treatment and control arms in the simulation.
+The treatment index variable is named "Trt", with 0/1 represents control/treatment respectively.
+
+### Covariates
+The covariate variables are randomly generated and independent with the treatment assignment and other covariates. Specifically, 
+
+- age ("Age") is standardized continuous value (e.g. mean 60 years, s.d.=10 years),
+- sex ("Sex") is binary value, with 0/1 represent female/male respectively,
+- race/ethnicity ("RE") is binary value, with 0/1 represent Non-Hispanic White/Non-Hispanic Black respectively,
+- Mutation subtype ("Mutation") is binary value, with 0/1 represent mutation No/Yes respectively.
+
+To add heterogeneity to the simulated data, we allow the distribution of the covariates to vary across sites. Specifically,
+
+- the mean of age is uniformly distributed between (-0.5, 0.5), i.e. a range of 10 years of patients mean age.
+- the proportion of male sex is uniformly distributed between (0.5, 0.6),
+- the proportion of NHB race/ethnicity is uniformly distributed between (0.05, 0.25),
+- the proportion of mutation is uniformly distributed between (0.1, 0.3).
+
+### Effect size
+We set the hazard ratio (HR) as 0.77 for treatment vs control, and 1.2, 1.5, 1.2, 1.8 for every 10-years age, male vs female, NHB vs NHW, and mutation yes vs no, respectively. The coefficients (i.e. log HR) used to generate survival time are then -0.261,  0.182,  0.405, 0.182, and 0.588.
+
+### Event time
+The event time ("t_event") is generated assuming Cox proportional hazard model with Weibull distributed baseline hazards. Specifically, the survival function at site $k=1,...,K$ is
+$$S_k(t|x) = S_{0k}(t)e^{x\beta}$$
+with the baseline survival function 
+$$S_{0k}(t)=1-e^{(-t/\lambda_k)^{p_k}}$$
+and $\lambda_k, p_k$ are the Weibull scale and shape parameters respectively.
+We allow the baseline hazards to vary across sites, that is, $\lambda_k, p_k$ are uniformly distributed between (30,40) and (8,12), respectively. These ranges are tuned to match the median survival time (34.4 months).
+
+### Censoring
+We assume administrative censoring and set the end of follow-up as a quantile of the generated event times. Specifically, we set the end of follow-up time as 34% percentile of the generated event times, to match the desired event rate (34%). The final survival time ("time") is equal to event time if event time < censoring time (event indicator "status"=1), or equal to the censoring time if event time $\geq$ censoring time ("status"=0).
+
+### Summary of site heterogeneity
+See below the actual parameters of sample size, Weibull baseline hazards, and covariate distributions for all the sites.
+```{r site_summary, echo=FALSE}
+load('JJ_pda_simu_20251123.rda')
+site_summary = 
+data.frame(Site = 1:10,
+           N=myparam$N, 
+           weibull_scale=myparam$weibull_scale, 
+           weibull_shape=myparam$weibull_shape, 
+           age.m=myparam$age.m, 
+           sex.m=myparam$sex.m, 
+           RE.m=myparam$RE.m, 
+           mutation.m=myparam$mutation.m)
+round(site_summary, 3)
+```
+
+### Deliverable
+All the generated numbers are rounds to 2 decimal points.
+```{r deliverable, echo=FALSE}
+require(data.table)
+data.table(all_data$all_data)
+```
+The final generated data is in file "JJ_pda_simu_data_20251123.csv".
