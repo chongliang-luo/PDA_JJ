@@ -7,13 +7,14 @@ require(devtools)
 devtools::install_github("penncil/pda")
 require(pda)
 
-# !!! specify your working directory, and your site ID
+# !!! specify your working directory, and your site ID's
 setwd('/Users/chongliang/Dropbox/PDA_development/PDA_JJ/OTA-dry-run/')
-mysite = 'site1' # 'site2'
+mysite = c('site1', 'site2') # c('site5', 'site6')
 
 
 # read in your site data
-mydata = fread(paste0('data_',mysite,'.csv'))
+mydata = lapply(mysite, function(s) fread(paste0('data_', s, '.csv'))) 
+names(mydata) = mysite
 sites = paste0('site', 1:10) # unique site names
 
  
@@ -23,7 +24,7 @@ sites = paste0('site', 1:10) # unique site names
 ######################################################################
 
 # !!! specify your working directory, .json files will be written to this dir
-mydir <- 'site1_lead/ODACH'   # 'site2/ODACH'
+mydir <- 'ODACH'  
 if (!dir.exists(mydir)) {
   dir.create(mydir)
 } 
@@ -54,21 +55,23 @@ pda(site_id = 'site1', control = control, dir = mydir)
 
 
 # STEP 1: initialize
-# download control.json from OTA to your working dir
-pda(site_id = mysite, ipdata = mydata, dir=mydir)
+# download control.json from OTA to your working dir  
+pda(site_id = mysite[2], ipdata = mydata[[2]], dir=mydir)   
+pda(site_id = mysite[1], ipdata = mydata[[1]], dir=mydir)   
 # upload siteX_initialize.json to OTA
 # (only lead site) also upload updated control.json to OTA
 
 
 # STEP 2: derive
 # download control.json from OTA to your working dir
-pda(site_id = mysite, ipdata = mydata, dir=mydir)
+pda(site_id = mysite[2], ipdata = mydata[[2]], dir=mydir)   
+pda(site_id = mysite[1], ipdata = mydata[[1]], dir=mydir)   
 # upload siteX_derive.json to OTA
 # (only lead site) also upload updated control.json to OTA
 
 
 # STEP 3 (only lead site): estimate 
-pda(site_id = mysite, ipdata = mydata, dir=mydir)
+pda(site_id = control$lead_site, ipdata = mydata[[control$lead_site]], dir=mydir)
 
 
 # the PDA ODACH is now completed!
@@ -94,7 +97,7 @@ data.frame(var=control$variables,
 ######################################################################
 
 # !!! specify your working directory, .json files will be written to this dir
-mydir <- 'site1_lead/ODACT'  # 'site2/ODACT'  
+mydir <- 'ODACT'   
 if (!dir.exists(mydir)) {
   dir.create(mydir)
 } 
@@ -115,7 +118,7 @@ control <- list(project_name = 'PDA J&J demo, ODACT',
                 # Trt is the treatment/control assignment 
                 variables = c('Trt', 'Age', 'Sex', 'RE', 'Mutation'), 
                 # time points to estimate coefficients beta(t) 
-                times = seq(24,by=3,len=4), 
+                times = c(24, 27, 30, 33),  
                 # bandwidth of data around the time points
                 bandwidth = 6,
                 optim_maxit = 300,
@@ -124,33 +127,35 @@ control <- list(project_name = 'PDA J&J demo, ODACT',
                 # use the meta-estimates as the initial estimates for ODACT
                 init_method = "meta",  
                 upload_date = as.character(Sys.time()) )
-pda(site_id = 'site1', control = control, dir = mydir)
+pda(site_id =control$lead_site, control = control, dir = mydir)
 # upload control.json to OTA
 
 
 # STEP 1: initialize
 # download control.json from OTA to your working dir
-pda(site_id = mysite, ipdata = mydata, dir=mydir)
+pda(site_id = mysite[2], ipdata = mydata[[2]], dir=mydir)
+pda(site_id = mysite[1], ipdata = mydata[[1]], dir=mydir)
 # upload siteX_initialize.json to OTA
 # (only lead site) also upload updated control.json to OTA
 
 
 # STEP 2: derive
 # download control.json from OTA to your working dir
-pda(site_id = mysite, ipdata = mydata, dir=mydir)
+pda(site_id = mysite[2], ipdata = mydata[[2]], dir=mydir)
+pda(site_id = mysite[1], ipdata = mydata[[1]], dir=mydir)
 # upload siteX_derive.json to OTA
 # (only lead site) also upload updated control.json to OTA
 
 
 # STEP 3 (only lead site): estimate 
-pda(site_id = mysite, ipdata = mydata, dir=mydir)
+pda(site_id =control$lead_site, ipdata = mydata[[control$lead_site]], dir=mydir)
 
 
 # the PDA ODACT is now completed!
 
 
 # (only lead site): present the ODACT results
-config <- getCloudConfig(site_id = 'site1', dir=mydir)
+config <- getCloudConfig(site_id =control$lead_site, dir=mydir)
 fit.odact <- pdaGet(name = 'site1_estimate', config = config)
 b.odact = fit.odact$btilde
 se.odact = fit.odact$setilde
